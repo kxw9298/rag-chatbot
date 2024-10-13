@@ -1,7 +1,7 @@
 pgvector
 psycopg2-binary
 langchain
-openai
+openai>=1.0.0
 PyPDF2
 flask
 python-dotenv

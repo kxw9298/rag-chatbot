@@ -1,6 +1,6 @@
 import os
+import openai
 from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.llms import OpenAI
 from langchain_community.vectorstores.pgvector import PGVector
 from langchain.memory import ConversationBufferWindowMemory
 
@@ -11,9 +11,8 @@ POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "vector_db")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Initialize OpenAI for embeddings and LLM
+# Initialize OpenAI embeddings
 embedding_model = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-llm = OpenAI(api_key=OPENAI_API_KEY, model="gpt-3.5-turbo")
 
 # Set up the PGVector connection
 CONNECTION_STRING = PGVector.connection_string_from_db_params(
@@ -47,28 +46,35 @@ def search_similar_documents(query):
     found_docs = vector_search.similarity_search(query)
     return "\n\n".join([doc.page_content for doc in found_docs])
 
-def generate_prompt(query, context, history):
+def build_chat_history(history):
     """
-    Build the full prompt for the LLM based on the current query, context, and conversation history.
+    Convert conversation history into a list of messages for the new OpenAI API.
     """
-    prompt = f"""
-    You are a helpful assistant who finds answers based on the provided context and the conversation history.
-
-    text_context:
-    {context}
-
-    conversation_history:
-    {history}
-
-    query:
-    {query}
-    """
-    return prompt
+    messages = []
+    if history:
+        for message in history["history"]:
+            messages.append({"role": message["role"], "content": message["content"]})
+    return messages
 
 def get_response_from_llm(query, context, history):
     """
-    Get the final response from the OpenAI LLM, based on the prompt.
+    Get the final response from the OpenAI LLM using the new API structure.
     """
-    prompt = generate_prompt(query, context, history)
-    response = llm(prompt)
-    return response
+    # Prepare messages for the chat completion
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": f"Context: {context}\n\nQuery: {query}"}
+    ]
+
+    # Append the conversation history if available
+    messages.extend(build_chat_history(history))
+
+    # Call the OpenAI API (new API structure for v1.0.0+)
+    response = openai.completions.create(
+        model="gpt-3.5-turbo",  # or 'gpt-4' if available
+        messages=messages,
+        max_tokens=500
+    )
+
+    # Extract and return the response from the assistant
+    return response.choices[0].message.content
