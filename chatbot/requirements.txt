@@ -1,6 +1,8 @@
-flask
+streamlit
+openai
 pgvector
 psycopg2
 langchain
-openai
+langchain-community
 python-dotenv
+tiktoken

@@ -1,5 +1,5 @@
 pgvector
-psycopg2
+psycopg2-binary
 langchain
 openai
 PyPDF2

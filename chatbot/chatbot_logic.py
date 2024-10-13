@@ -1,79 +1,74 @@
 import os
-import psycopg2
 from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain_community.vectorstores.pgvector import PGVector
 from langchain.llms import OpenAI
-from dotenv import load_dotenv
+from langchain_community.vectorstores.pgvector import PGVector
+from langchain.memory import ConversationBufferWindowMemory
 
 # Load environment variables
-load_dotenv()
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "user")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "vector_db")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-POSTGRES_HOST = os.getenv('POSTGRES_HOST')
-POSTGRES_USER = os.getenv('POSTGRES_USER')
-POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD')
-POSTGRES_DB = os.getenv('POSTGRES_DB')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+# Initialize OpenAI for embeddings and LLM
+embedding_model = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+llm = OpenAI(api_key=OPENAI_API_KEY, model="gpt-3.5-turbo")
 
-def connect_to_vector_db():
-    """
-    Connect to the PostgreSQL vector database.
-    """
-    return psycopg2.connect(
-        host=POSTGRES_HOST,
-        user=POSTGRES_USER,
-        password=POSTGRES_PASSWORD,
-        dbname=POSTGRES_DB
-    )
+# Set up the PGVector connection
+CONNECTION_STRING = PGVector.connection_string_from_db_params(
+    driver="psycopg2",
+    host=POSTGRES_HOST,
+    port=5432,
+    database=POSTGRES_DB,
+    user=POSTGRES_USER,
+    password=POSTGRES_PASSWORD,
+)
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "documents")
 
-def perform_semantic_search(query_text, top_k=2):
-    """
-    Perform a semantic search on the vector database to retrieve the most relevant context.
-    """
-    # Initialize the OpenAI embedding model
-    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-    
-    # Create the vector search interface
-    vector_search = PGVector(
-        collection_name='documents',
-        connection_string=f'postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}/{POSTGRES_DB}',
-        embedding_function=embeddings
-    )
-    
-    # Perform the semantic search on the user's query
-    results = vector_search.similarity_search(query_text, k=top_k)
-    
-    # Extract and format the context
-    context = "\n".join([result.page_content for result in results])
-    
-    return context
+vector_search = PGVector(
+    collection_name=COLLECTION_NAME,
+    connection_string=CONNECTION_STRING,
+    embedding_function=embedding_model,
+)
 
-def query_llm(query, context):
+# Memory for conversation history
+memory = ConversationBufferWindowMemory(
+    memory_key="history",
+    ai_prefix="Bot",
+    human_prefix="User",
+    k=3,  # Store the last 3 conversation pairs
+)
+
+def search_similar_documents(query):
     """
-    Send the user query and the retrieved context to the LLM (OpenAI GPT).
+    Perform a similarity search using PGVector.
     """
-    # Initialize the LLM model
-    llm = OpenAI(api_key=OPENAI_API_KEY)
-    
-    # Combine the query and context for the LLM prompt
-    prompt = f"Context:\n{context}\n\nQuestion:\n{query}\n\nAnswer:"
-    
-    # Get the response from the LLM
+    found_docs = vector_search.similarity_search(query)
+    return "\n\n".join([doc.page_content for doc in found_docs])
+
+def generate_prompt(query, context, history):
+    """
+    Build the full prompt for the LLM based on the current query, context, and conversation history.
+    """
+    prompt = f"""
+    You are a helpful assistant who finds answers based on the provided context and the conversation history.
+
+    text_context:
+    {context}
+
+    conversation_history:
+    {history}
+
+    query:
+    {query}
+    """
+    return prompt
+
+def get_response_from_llm(query, context, history):
+    """
+    Get the final response from the OpenAI LLM, based on the prompt.
+    """
+    prompt = generate_prompt(query, context, history)
     response = llm(prompt)
-    
-    return response
-
-def handle_user_query(query):
-    """
-    Handle the user's query by retrieving relevant context from the vector database
-    and querying the LLM with the context.
-    """
-    # Perform semantic search to get the relevant context
-    context = perform_semantic_search(query)
-    
-    if not context:
-        return "Sorry, I couldn't find any relevant information."
-    
-    # Send the query and context to the LLM
-    response = query_llm(query, context)
-    
     return response
