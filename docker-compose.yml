@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: postgres_vector
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: vector_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: jupyter_notebook
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+    ports:
+      - "8888:8888"
+  
+  document_processor:
+    build: ./document_processor
+    container_name: doc_processor
+    depends_on:
+      - postgres
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: vector_db
+    volumes:
+      - ./documents:/app/documents
+
+  chatbot:
+    build: ./chatbot
+    container_name: chatbot
+    depends_on:
+      - postgres
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: vector_db
+      LLM_API_KEY: ${LLM_API_KEY}
+    ports:
+      - "5000:5000"
+
+volumes:
+  postgres_data:

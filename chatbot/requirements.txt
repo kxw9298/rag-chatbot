@@ -1,0 +1,5 @@
+pgvector
+psycopg2
+langchain
+openai
+flask  # For the chatbot API
