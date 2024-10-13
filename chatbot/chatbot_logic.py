@@ -70,7 +70,7 @@ def get_response_from_llm(query, context, history):
     messages.extend(build_chat_history(history))
 
     # Call the correct OpenAI Chat API
-    response = openai.chat_completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",  # or 'gpt-4' if available
         messages=messages,
         max_tokens=500
