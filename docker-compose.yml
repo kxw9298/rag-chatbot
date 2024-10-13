@@ -5,13 +5,20 @@ services:
     image: ankane/pgvector:latest
     container_name: postgres_vector
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: vector_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   jupyter:
     image: jupyter/scipy-notebook:latest
@@ -22,33 +29,47 @@ services:
       - ./notebooks:/home/jovyan/work
     ports:
       - "8888:8888"
+    networks:
+      - app_network
   
   document_processor:
     build: ./document_processor
     container_name: doc_processor
     depends_on:
       - postgres
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: vector_db
+    env_file:
+      - .env
     volumes:
       - ./documents:/app/documents
+      - ./logs:/app/logs
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   chatbot:
     build: ./chatbot
     container_name: chatbot
     depends_on:
       - postgres
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: vector_db
-      LLM_API_KEY: ${LLM_API_KEY}
+    env_file:
+      - .env
     ports:
       - "5000:5000"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/ask"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data:
+
+networks:
+  app_network:
+    driver: bridge
