@@ -27,6 +27,7 @@ services:
       JUPYTER_ENABLE_LAB: "yes"
     volumes:
       - ./notebooks:/home/jovyan/work
+      - ./documents:/home/jovyan/documents  # Mount the documents folder here
     ports:
       - "8888:8888"
     networks:
