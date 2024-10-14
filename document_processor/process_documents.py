@@ -2,8 +2,8 @@ import os
 from dotenv import load_dotenv  # New import
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_postgres import PGVector
-from langchain_openai import OpenAIEmbeddings 
+from langchain_community.vectorstores.pgvector import PGVector
+from langchain.embeddings.openai import OpenAIEmbeddings
 
 # Load environment variables from .env file
 load_dotenv()
@@ -24,14 +24,14 @@ def process_and_store_document(file_path):
     documents = loader.load_and_split(text_splitter)
 
     # Initialize OpenAI embeddings model
-    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    embedding_model = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
     # Create vector search interface to interact with the PostgreSQL database
     vector_search = PGVector(
         collection_name='documents', 
         connection_string=f'postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}/{POSTGRES_DB}',
         embedding_function=embedding_model,
-        use_jsonb=True
+        # use_jsonb=True
     )
 
     # Process and clean document content

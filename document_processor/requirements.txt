@@ -7,6 +7,4 @@ pypdf
 flask
 python-dotenv
 langchain-community
-tiktoken>=0.3.0
-langchain-openai>=0.1.0
-langchain-postgres>=0.1.0
+tiktoken
