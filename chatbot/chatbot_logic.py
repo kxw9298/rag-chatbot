@@ -1,5 +1,5 @@
 import os
-import openai
+from openai import OpenAI
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain_community.vectorstores.pgvector import PGVector
 from langchain.memory import ConversationBufferWindowMemory
@@ -13,6 +13,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Initialize OpenAI embeddings
 embedding_model = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+
+client = OpenAI(
+    # This is the default and can be omitted
+    api_key=os.environ.get("OPENAI_API_KEY"),
+)
 
 # Set up the PGVector connection
 CONNECTION_STRING = PGVector.connection_string_from_db_params(
@@ -49,16 +54,27 @@ def search_similar_documents(query):
 def build_chat_history(history):
     """
     Convert conversation history into a list of messages for the ChatCompletion API.
+    Ensure that history is a list of dictionaries with 'role' and 'content' keys.
     """
     messages = []
-    if history:
-        for message in history["history"]:
-            messages.append({"role": message["role"], "content": message["content"]})
+
+    # Check if history is a list of dictionaries
+    if isinstance(history, list):
+        for message in history:
+            # Ensure each message is a dictionary with the required keys
+            if isinstance(message, dict) and "role" in message and "content" in message:
+                messages.append({"role": message["role"], "content": message["content"]})
+            else:
+                print(f"Invalid message format: {message}")
+    else:
+        print("History is not in the expected format (list of dictionaries)")
+
     return messages
+
 
 def get_response_from_llm(query, context, history):
     """
-    Get the final response from the OpenAI LLM using the correct ChatCompletion API.
+    Get the final response from the OpenAI LLM using the new API interface.
     """
     # Prepare messages for the chat completion API
     messages = [
@@ -69,12 +85,14 @@ def get_response_from_llm(query, context, history):
     # Append the conversation history if available
     messages.extend(build_chat_history(history))
 
-    # Call the correct OpenAI Chat API
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",  # or 'gpt-4' if available
-        messages=messages,
-        max_tokens=500
+    chat_completion = client.chat.completions.create(
+    messages=messages,
+    model="gpt-3.5-turbo",
+    max_tokens=500
     )
 
+    # Call the OpenAI API with the new `completions` method
+    response = chat_completion
+
     # Extract and return the response from the assistant
-    return response['choices'][0]['message']['content']
+    return response.choices[0].message.content
