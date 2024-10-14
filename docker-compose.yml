@@ -25,6 +25,8 @@ services:
     container_name: jupyter_notebook
     environment:
       JUPYTER_ENABLE_LAB: "yes"
+    env_file:
+      - .env
     volumes:
       - ./notebooks:/home/jovyan/work
       - ./documents:/home/jovyan/documents  # Mount the documents folder here
