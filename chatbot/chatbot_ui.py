@@ -1,5 +1,5 @@
 import streamlit as st
-from chatbot_logic import search_similar_documents, get_response_from_llm
+from chatbot_logic import handle_query
 from langchain.memory import ConversationBufferWindowMemory
 
 # Initialize Streamlit UI
@@ -29,12 +29,11 @@ if chat_input := st.chat_input("Ask a question"):
         st.write(chat_input)
         st.session_state.messages.append({"role": "human", "content": chat_input})
 
-    # Perform similarity search to find relevant documents
-    context = search_similar_documents(chat_input)
-
-    # Get response from OpenAI LLM based on the current context and conversation history
+    # Load history from memory
     history = st.session_state.memory.load_memory_variables({})
-    response = get_response_from_llm(chat_input, context, history)
+
+    # Call handle_query to process the user input and history
+    response = handle_query(chat_input, history)
 
     # Display the AI response
     with st.chat_message("ai"):

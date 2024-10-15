@@ -1,9 +1,13 @@
 import os
+import logging
 from openai import OpenAI
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain_community.vectorstores.pgvector import PGVector
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import ChatPromptTemplate
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load environment variables
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
@@ -13,14 +17,13 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "vector_db")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Initialize OpenAI embeddings
+logging.debug("Initializing OpenAI embeddings")
 embedding_model = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
-client = OpenAI(
-    # This is the default and can be omitted
-    api_key=os.environ.get("OPENAI_API_KEY"),
-)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Set up the PGVector connection
+logging.debug("Setting up PGVector connection")
 CONNECTION_STRING = PGVector.connection_string_from_db_params(
     driver="psycopg2",
     host=POSTGRES_HOST,
@@ -29,7 +32,7 @@ CONNECTION_STRING = PGVector.connection_string_from_db_params(
     user=POSTGRES_USER,
     password=POSTGRES_PASSWORD,
 )
-COLLECTION_NAME = os.getenv("POSTGRES_DB", "documents")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "documents")
 
 vector_search = PGVector(
     collection_name=COLLECTION_NAME,
@@ -38,6 +41,7 @@ vector_search = PGVector(
 )
 
 # Memory for conversation history
+logging.debug("Setting up conversation memory")
 memory = ConversationBufferWindowMemory(
     memory_key="history",
     ai_prefix="Bot",
@@ -45,7 +49,8 @@ memory = ConversationBufferWindowMemory(
     k=3,  # Store the last 3 conversation pairs
 )
 
-## Define the prompt template
+# Define the prompt template
+logging.debug("Defining prompt template")
 prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful assistant who helps in finding answers using the provided context."),
     ("human", """
@@ -72,10 +77,17 @@ def search_similar_documents(query):
     """
     Perform a similarity search using PGVector. If no documents are found, return None.
     """
+    logging.debug(f"Searching for similar documents for query: {query}")
     found_docs = vector_search.similarity_search(query)
+    
     if not found_docs:
-        print("not found similar documents")
+        logging.info("No similar documents found.")
         return None
+    
+    # Log the found documents
+    for doc in found_docs:
+        logging.debug(f"Found document: {doc.page_content[:200]}...")  # Truncate the content for logging
+    
     return "\n\n".join([doc.page_content for doc in found_docs])
 
 def build_chat_history(history):
@@ -87,43 +99,66 @@ def build_chat_history(history):
     # Check if history is a list of dictionaries
     if isinstance(history, list):
         for message in history:
-            # Ensure each message is a dictionary with the required keys
             if isinstance(message, dict) and "role" in message and "content" in message:
                 messages.append({"role": message["role"], "content": message["content"]})
             else:
-                print(f"Invalid message format: {message}")
+                logging.warning(f"Invalid message format: {message}")
     else:
-        print("History is not in the expected format (list of dictionaries)")
+        logging.warning("History is not in the expected format (list of dictionaries)")
 
     return messages
-
 
 def get_response_from_llm(query, context, history):
     """
     Get the final response from the OpenAI LLM using the correct API interface.
     If no relevant context is found, return a fallback message.
     """
-    # Return fallback response if context is missing
-    if not context and not history:
-        return "I don't know, it is outside of my knowledge."
+    logging.debug("Getting response from LLM")
+    
+    # If no context or history, return fallback response
+    if not context:
+        logging.info("No context found. Returning fallback response.")
+        return "I don't know, the provided context does not mention anything about your question."
 
-    # Prepare messages for the chat completion API
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": f"Context: {context if context else 'No relevant context found'}\n\nQuery: {query}"}
-    ]
-
-    # Append the conversation history if available
-    messages.extend(build_chat_history(history))
-
-    chat_completion = client.chat.completions.create(
-    messages=messages,
-    model="gpt-3.5-turbo",
-    max_tokens=500
+    # Use the prompt template to structure the LLM prompt
+    formatted_prompt = prompt_template.format_messages(
+        name="Bot",
+        context=context,
+        history=history,
+        query=query
     )
 
-    # Call the OpenAI API with the new `completions` method
+    # Log the formatted prompt
+    logging.debug(f"Formatted LLM prompt: {formatted_prompt}")
+
+    chat_completion = client.chat.completions.create(
+        messages=formatted_prompt,
+        model="gpt-3.5-turbo",
+        max_tokens=500
+    )
+
+    logging.debug("LLM response received")
     response = chat_completion
 
     # Extract and return the response from the assistant
     return response.choices[0].message.content
+
+def handle_query(user_input, history):
+    """
+    Handle the user's query by searching for similar documents and getting a response from the LLM.
+    """
+    logging.debug(f"Handling user query: {user_input}")
+
+    # Search for similar documents based on the user's query
+    context = search_similar_documents(user_input)
+
+    # If no similar documents, return "I don't know"
+    if not context:
+        logging.info("No relevant documents found in embeddings. Returning fallback response.")
+        return "I don't know, the provided context does not mention anything about your question."
+
+    # Get the response from the LLM
+    response = get_response_from_llm(user_input, context, history)
+
+    logging.debug(f"LLM response: {response}")
+    return response
