@@ -21,7 +21,8 @@ services:
       retries: 5
 
   jupyter:
-    image: jupyter/scipy-notebook:latest
+    build:
+      context: ./notebooks  # Reference the notebooks folder containing the Dockerfile
     container_name: jupyter_notebook
     environment:
       JUPYTER_ENABLE_LAB: "yes"

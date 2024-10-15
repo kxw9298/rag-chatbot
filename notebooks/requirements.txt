@@ -1,0 +1,5 @@
+psycopg
+pgvector
+python-dotenv
+langchain
+langchain-community
