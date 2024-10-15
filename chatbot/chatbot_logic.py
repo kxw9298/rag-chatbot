@@ -75,12 +75,11 @@ prompt_template = ChatPromptTemplate.from_messages([
 
 def search_similar_documents(query):
     """
-    Perform a similarity search using PGVector. If no documents are found or their similarity score
-    is too low, return None. Log the documents and their similarity scores for debugging purposes.
+    Perform a similarity search using PGVector. Log the documents and their similarity scores for debugging purposes.
     """
     logging.debug(f"Searching for documents similar to: {query}")
 
-    # Perform similarity search
+    # Perform similarity search with scores
     found_docs = vector_search.similarity_search_with_score(query)  # Returns documents and scores
 
     if not found_docs:
@@ -92,15 +91,15 @@ def search_similar_documents(query):
         logging.debug(f"Document: {doc.page_content[:100]}... | Similarity Score: {score}")
 
     # Set a threshold for similarity
-    threshold = 0.6  # You can adjust this threshold based on your dataset
-    relevant_docs = [doc for doc, score in found_docs if score > threshold]
+    # threshold = 0.6  # You can adjust this threshold based on your dataset
+    # relevant_docs = [doc for doc, score in found_docs if score > threshold]
 
-    if not relevant_docs:
-        logging.info(f"No documents found above the similarity threshold of {threshold}.")
-        return None
+    # if not relevant_docs:
+    #     logging.info(f"No documents found above the similarity threshold of {threshold}.")
+    #     return None
 
-    # Return the combined content of the relevant documents
-    return "\n\n".join([doc.page_content for doc in relevant_docs])
+    # Return the combined content of all found documents
+    return "\n\n".join([doc.page_content for doc, _ in found_docs])
 
 def build_chat_history(history):
     """
