@@ -32,7 +32,7 @@ CONNECTION_STRING = PGVector.connection_string_from_db_params(
     user=POSTGRES_USER,
     password=POSTGRES_PASSWORD,
 )
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "documents")
+COLLECTION_NAME = os.getenv("documents")
 
 vector_search = PGVector(
     collection_name=COLLECTION_NAME,
