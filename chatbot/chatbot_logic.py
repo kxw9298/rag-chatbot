@@ -75,20 +75,32 @@ prompt_template = ChatPromptTemplate.from_messages([
 
 def search_similar_documents(query):
     """
-    Perform a similarity search using PGVector. If no documents are found, return None.
+    Perform a similarity search using PGVector. If no documents are found or their similarity score
+    is too low, return None. Log the documents and their similarity scores for debugging purposes.
     """
-    logging.debug(f"Searching for similar documents for query: {query}")
-    found_docs = vector_search.similarity_search(query)
-    
+    logging.debug(f"Searching for documents similar to: {query}")
+
+    # Perform similarity search
+    found_docs = vector_search.similarity_search_with_score(query)  # Returns documents and scores
+
     if not found_docs:
         logging.info("No similar documents found.")
         return None
-    
-    # Log the found documents
-    for doc in found_docs:
-        logging.debug(f"Found document: {doc.page_content[:200]}...")  # Truncate the content for logging
-    
-    return "\n\n".join([doc.page_content for doc in found_docs])
+
+    # Log the found documents and their similarity scores
+    for doc, score in found_docs:
+        logging.debug(f"Document: {doc.page_content[:100]}... | Similarity Score: {score}")
+
+    # Set a threshold for similarity
+    threshold = 0.6  # You can adjust this threshold based on your dataset
+    relevant_docs = [doc for doc, score in found_docs if score > threshold]
+
+    if not relevant_docs:
+        logging.info(f"No documents found above the similarity threshold of {threshold}.")
+        return None
+
+    # Return the combined content of the relevant documents
+    return "\n\n".join([doc.page_content for doc in relevant_docs])
 
 def build_chat_history(history):
     """
@@ -114,13 +126,13 @@ def get_response_from_llm(query, context, history):
     If no relevant context is found, return a fallback message.
     """
     logging.debug("Getting response from LLM")
-    
-    # If no context or history, return fallback response
+
+    # If no relevant context is found, return fallback response
     if not context:
-        logging.info("No context found. Returning fallback response.")
+        logging.info("No relevant context found. Returning fallback response.")
         return "I don't know, the provided context does not mention anything about your question."
 
-    # Use the prompt template to structure the LLM prompt
+    # Build the conversation messages for the LLM using the prompt template
     formatted_prompt = prompt_template.format_messages(
         name="Bot",
         context=context,
@@ -128,20 +140,32 @@ def get_response_from_llm(query, context, history):
         query=query
     )
 
-    # Log the formatted prompt
-    logging.debug(f"Formatted LLM prompt: {formatted_prompt}")
+    # Ensure all messages include a 'role' and 'content' field
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": f"Context: {context if context else 'No relevant context found'}\n\nQuery: {query}"}
+    ]
 
-    chat_completion = client.chat.completions.create(
-        messages=formatted_prompt,
-        model="gpt-3.5-turbo",
-        max_tokens=500
-    )
+    # Append history if available
+    if history:
+        messages.extend(build_chat_history(history))
 
-    logging.debug("LLM response received")
-    response = chat_completion
+    # Log the messages being sent to the LLM
+    logging.debug(f"Messages for LLM: {messages}")
 
-    # Extract and return the response from the assistant
-    return response.choices[0].message.content
+    # Call the OpenAI API
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=messages,
+            model="gpt-3.5-turbo",
+            max_tokens=500
+        )
+        logging.debug("LLM response received")
+        return chat_completion.choices[0].message.content
+    except Exception as e:
+        logging.error(f"Error getting response from LLM: {e}")
+        return "There was an error processing your request."
+
 
 def handle_query(user_input, history):
     """
